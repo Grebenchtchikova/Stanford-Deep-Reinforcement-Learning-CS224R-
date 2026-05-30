@@ -24,7 +24,7 @@ app = modal.App("cs224r-trivia-train-hendrycks")
 image = (
     modal.Image.from_dockerfile("docker/Dockerfile.ngc.vllm0.8.noverl")
     .add_local_dir("../cs224r-project-e3", "/root/verl", copy=True)
-    .run_commands("pip install -e /root/verl")
+    .run_commands("pip install -e /root/verl", "pip install seaborn")
     .add_local_file("scripts/grpo_hendrycks_a100.sh", "/root/grpo_hendrycks_a100.sh")
 )
 
