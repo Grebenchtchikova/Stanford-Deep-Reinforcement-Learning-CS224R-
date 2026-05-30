@@ -1,5 +1,3 @@
-gsm8k_custom.py:
-
 # Copyright 2025 Individual Contributor: chung
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
