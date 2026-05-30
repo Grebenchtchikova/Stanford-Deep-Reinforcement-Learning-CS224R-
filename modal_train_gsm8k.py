@@ -107,7 +107,7 @@ def run_train(track: str, total_steps: int, save_freq: int, test_freq: int):
     print(f"[modal_train] ckpt_dir={ckpt_dir}")
  
     try:
-        subprocess.run(cmd, check=True, env=env)
+        subprocess.run(cmd, check=True, env=env, cwd="/root/verl")
     finally:
         vol.commit()
  
