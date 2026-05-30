@@ -27,7 +27,7 @@ image = (
     .run_commands("pip install -e /root/verl")
     .add_local_file(
         "reward/gsm8k_custom.py",
-        "/usr/local/lib/python3.10/dist-packages/verl/utils/reward_score/gsm8k_custom.py",
+        "/root/verl/verl/utils/reward_score/gsm8k_custom.py",
     )
     .add_local_file("scripts/grpo_gsm8k_a100.sh", "/root/grpo_gsm8k_a100.sh")
 )
