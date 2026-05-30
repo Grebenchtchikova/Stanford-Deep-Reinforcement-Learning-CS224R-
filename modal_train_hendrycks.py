@@ -23,7 +23,7 @@ app = modal.App("cs224r-trivia-train-hendrycks")
 
 image = (
     modal.Image.from_dockerfile("docker/Dockerfile.ngc.vllm0.8.noverl")
-    .pip_install("verl==0.2.0.post2")
+    .run_commands("pip install --no-deps verl==0.2.0.post2")
     .add_local_file("scripts/grpo_hendrycks_a100.sh", "/root/grpo_hendrycks_a100.sh")
 )
 

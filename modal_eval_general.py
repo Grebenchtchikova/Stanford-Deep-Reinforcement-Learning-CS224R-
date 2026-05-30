@@ -36,7 +36,7 @@ app = modal.App("cs224r-trivia-eval")
 
 image = (
     modal.Image.from_dockerfile("docker/Dockerfile.ngc.vllm0.8.noverl")
-    .pip_install("verl==0.2.0.post2", "seaborn", "lm-eval")
+    .run_commands("pip install --no-deps verl==0.2.0.post2", "seaborn", "lm-eval")
 )
 
 vol = modal.Volume.from_name("cs224r-trivia-vol", create_if_missing=True)
