@@ -23,7 +23,7 @@ app = modal.App("cs224r-trivia-train-gsm8k")
  
 image = (
     modal.Image.from_dockerfile("docker/Dockerfile.ngc.vllm0.8.noverl")
-    .pip_install("verl==0.3.0.post1")
+    .run_commands("pip install git+https://github.com/volcengine/verl.git@554a6be")
     .add_local_file(
         "reward/gsm8k_custom.py",
         "/usr/local/lib/python3.10/dist-packages/verl/utils/reward_score/gsm8k_custom.py",
