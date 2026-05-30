@@ -92,6 +92,7 @@ def run_train(track: str, total_steps: int, save_freq: int, test_freq: int):
         "WANDB_PROJECT": "cs224r-trivia-hendrycks",
     })
 
+    subprocess.run(["sed", "-i", "s/\r//g", "/root/grpo_hendrycks_a100.sh"])
     cmd = ["bash", "/root/grpo_hendrycks_a100.sh"]
 
     print(f"[modal_train] track={track} exp={exp_name} steps={total_steps}")
