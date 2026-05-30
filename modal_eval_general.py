@@ -2,51 +2,47 @@
 """
 Unified Modal evaluation: run verl main_generation on AIME / MATH / GSM8K
 and score with the appropriate scorer per dataset.
- 
+
 Usage:
     # GSM8K with base Qwen model
     modal run modal_eval_general.py --dataset gsm8k --model qwen
- 
+
     # GSM8K with trained Track A checkpoint
     modal run modal_eval_general.py --dataset gsm8k --model track_a
- 
+
     # GSM8K with trained Track B checkpoint
     modal run modal_eval_general.py --dataset gsm8k --model track_b
- 
+
     # GSM8K with e3 published checkpoint
     modal run modal_eval_general.py --dataset gsm8k --model e3
- 
+
     # MATH-500 with Track A
     modal run modal_eval_general.py --dataset math --model track_a
- 
+
     # Smoke tests
     modal run modal_eval_general.py --dataset gsm8k --num-problems 5 --n-samples 1 --output-tag smoke
     modal run modal_eval_general.py --dataset math  --num-problems 5 --n-samples 1 --max-response-length 2048 --output-tag smoke
     modal run modal_eval_general.py --dataset aime  --num-problems 2 --n-samples 2 --max-response-length 2048 --output-tag smoke
- 
+
 Scorer choices:
   - AIME  -> curriculum_math (SymPy equivalence)
   - MATH  -> curriculum_math (SymPy equivalence handles equivalent answer forms)
   - GSM8K -> gsm8k.compute_score with method='flexible' (finds last number in response)
 """
- 
+
 import modal
- 
+
 app = modal.App("cs224r-trivia-eval")
- 
+
 image = (
     modal.Image.from_dockerfile("docker/Dockerfile.ngc.vllm0.8.noverl")
-    .run_commands(
-        "pip install git+https://github.com/volcengine/verl.git@554a6be",
-        "pip install seaborn",
-        "pip install lm-eval",
-    )
+    .pip_install("verl==0.2.0.post2", "seaborn", "lm-eval")
 )
- 
+
 vol = modal.Volume.from_name("cs224r-trivia-vol", create_if_missing=True)
- 
+
 DATA_DIR = "/data/eval"
- 
+
 MODEL_IDS = {
     "qwen": {
         "gsm8k": "Qwen/Qwen3-1.7B",
@@ -67,7 +63,7 @@ MODEL_IDS = {
         "math": "/data/ckpts/math/math-trivia-only_hf",
     },
 }
- 
+
 # Per-dataset configuration
 DATASETS = {
     "aime": {
@@ -113,10 +109,10 @@ DATASETS = {
         "scorer":        "gsm8k_flexible",
     },
 }
- 
- 
+
+
 # ----------------------------- helpers -----------------------------
- 
+
 def _extract_answer(raw, extractor):
     """Pull the ground-truth answer out of a dataset's answer column."""
     s = str(raw)
@@ -138,8 +134,8 @@ def _extract_answer(raw, extractor):
             return s
         return m.group(1).replace(",", "").replace("$", "").strip()
     raise ValueError(f"Unknown answer extractor: {extractor}")
- 
- 
+
+
 def _apply_math_subset(df, subset):
     """Apply MATH-specific subset filtering."""
     if subset == "all":
@@ -154,23 +150,23 @@ def _apply_math_subset(df, subset):
         print(f"[data] level5 filter: {int(mask.sum())}/{len(df)} rows kept")
         return df[mask].reset_index(drop=True)
     raise ValueError(f"Unknown --subset: {subset}")
- 
- 
+
+
 def _prepare_dataset(dataset_key, subset, split, num_problems, tag):
     """Download HF dataset, filter, format as RLHF parquet matching verl's schema."""
     import os
     import pandas as pd
     from datasets import load_dataset
- 
+
     cfg = DATASETS[dataset_key]
     os.makedirs(DATA_DIR, exist_ok=True)
     out_path = os.path.join(DATA_DIR, f"{dataset_key}_{tag}.parquet")
- 
+
     if cfg["hf_config"] is not None:
         ds = load_dataset(cfg["hf_id"], cfg["hf_config"])
     else:
         ds = load_dataset(cfg["hf_id"])
- 
+
     if split in ds:
         split_name = split
     else:
@@ -178,10 +174,10 @@ def _prepare_dataset(dataset_key, subset, split, num_problems, tag):
         print(f"[data] Split '{split}' not found; falling back to '{split_name}'")
     print(f"[data] Using split '{split_name}' with {len(ds[split_name])} rows")
     ds = ds[split_name]
- 
+
     df = ds.to_pandas()
     print(f"[data] Columns: {list(df.columns)}")
- 
+
     # AIME: filter by competition column if present
     if cfg["competition"] is not None:
         comp_col = None
@@ -197,11 +193,11 @@ def _prepare_dataset(dataset_key, subset, split, num_problems, tag):
                 f"{int(mask.sum())}/{len(df)} rows kept"
             )
             df = df[mask].reset_index(drop=True)
- 
+
     # MATH: subset filtering
     if dataset_key == "math":
         df = _apply_math_subset(df, subset)
- 
+
     # Locate problem + answer columns
     prob_col = next((c for c in cfg["question_cols"] if c in df.columns), None)
     ans_col = next((c for c in cfg["answer_cols"] if c in df.columns), None)
@@ -212,11 +208,11 @@ def _prepare_dataset(dataset_key, subset, split, num_problems, tag):
             f"answer={cfg['answer_cols']}"
         )
     print(f"[data] problem_col={prob_col}, answer_col={ans_col}, extractor={cfg['answer_extractor']}")
- 
+
     if num_problems is not None:
         df = df.head(num_problems).reset_index(drop=True)
         print(f"[data] Truncated to {len(df)} problems")
- 
+
     rows = []
     for idx, row in df.iterrows():
         question = f"{row[prob_col]} {cfg['instruction']}"
@@ -234,13 +230,13 @@ def _prepare_dataset(dataset_key, subset, split, num_problems, tag):
                 "extra_info": extra,
             }
         )
- 
+
     out_df = pd.DataFrame(rows)
     out_df.to_parquet(out_path, index=False)
     print(f"[data] Wrote {len(out_df)} prompts -> {out_path}")
     return out_path, len(out_df)
- 
- 
+
+
 def _run_generation(
     data_path,
     output_path,
@@ -252,7 +248,7 @@ def _run_generation(
 ):
     """Invoke verl.trainer.main_generation as a subprocess."""
     import subprocess
- 
+
     cmd = [
         "python3", "-m", "verl.trainer.main_generation",
         "trainer.nnodes=1",
@@ -281,24 +277,24 @@ def _run_generation(
     print("[gen] Running:")
     print("    " + " \\\n    ".join(cmd))
     subprocess.run(cmd, check=True)
- 
- 
+
+
 def _pass_at_k(n, c, k):
     """Unbiased pass@k estimator from Chen et al. (HumanEval)."""
     if n - c < k:
         return 1.0
     import numpy as np
     return float(1.0 - np.prod(1.0 - k / np.arange(n - c + 1, n + 1)))
- 
- 
+
+
 def _get_score_fn(cfg):
     """Return (score_fn, extract_check_fn) pair for the dataset's configured scorer."""
     scorer = cfg["scorer"]
     data_source = cfg["data_source"]
- 
+
     if scorer == "curriculum_math":
         from verl.utils.reward_score.curriculum_math.compute_score import compute_score
- 
+
         def score_fn(resp, gt):
             return float(compute_score(
                 data_source=data_source,
@@ -306,63 +302,63 @@ def _get_score_fn(cfg):
                 ground_truth=gt,
                 extra_info=None,
             ))
- 
+
         def extract_check(resp):
             return "\\boxed" in resp
- 
+
         return score_fn, extract_check
- 
+
     if scorer == "math":
         from verl.utils.reward_score.math import compute_score
- 
+
         def score_fn(resp, gt):
             return float(compute_score(
                 solution_str=resp,
                 ground_truth=str(gt),
             ))
- 
+
         def extract_check(resp):
             return "\\boxed" in resp
- 
+
         return score_fn, extract_check
- 
+
     if scorer == "gsm8k_flexible":
         from verl.utils.reward_score.gsm8k import compute_score, extract_solution
- 
+
         def score_fn(resp, gt):
             return float(compute_score(
                 solution_str=resp,
                 ground_truth=str(gt),
                 method="flexible",
             ))
- 
+
         def extract_check(resp):
             return extract_solution(resp, method="flexible") is not None
- 
+
         return score_fn, extract_check
- 
+
     raise ValueError(f"Unknown scorer: {scorer}")
- 
- 
+
+
 def _score_outputs(dataset_key, output_path, n_samples, model_tag, tag):
     """Score generated responses using the dataset's configured scorer."""
     import os
     import json
     import pandas as pd
     import numpy as np
- 
+
     cfg = DATASETS[dataset_key]
     score_fn, extract_check = _get_score_fn(cfg)
     print(f"[score] Using scorer '{cfg['scorer']}' for dataset '{dataset_key}'")
- 
+
     df = pd.read_parquet(output_path)
     num_problems = len(df)
     print(f"[score] Loaded {num_problems} problems from {output_path}")
- 
+
     correctness = np.zeros((num_problems, n_samples), dtype=np.int32)
     extract_failures = 0
     per_problem_rows = []
- 
+
     for i, row in df.iterrows():
         gt = row["reward_model"]["ground_truth"]
         responses = row["responses"]
@@ -375,7 +371,7 @@ def _score_outputs(dataset_key, output_path, n_samples, model_tag, tag):
             if score == 0.0 and not extract_check(resp):
                 extract_failures += 1
             correctness[i, j] = int(score == 1.0)
- 
+
         per_problem_rows.append(
             {
                 "problem_idx": int(i),
@@ -385,7 +381,7 @@ def _score_outputs(dataset_key, output_path, n_samples, model_tag, tag):
                 "accuracy": float(correctness[i].mean()),
             }
         )
- 
+
     metrics = {
         "dataset": dataset_key,
         "model": model_tag,
@@ -400,24 +396,24 @@ def _score_outputs(dataset_key, output_path, n_samples, model_tag, tag):
         if k <= n_samples:
             vals = [_pass_at_k(n_samples, int(correctness[i].sum()), k) for i in range(num_problems)]
             metrics[f"pass@{k}"] = float(np.mean(vals))
- 
+
     metrics_path = os.path.join(DATA_DIR, f"metrics_{dataset_key}_{model_tag}_{tag}.json")
     per_problem_path = os.path.join(DATA_DIR, f"per_problem_{dataset_key}_{model_tag}_{tag}.csv")
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
     pd.DataFrame(per_problem_rows).to_csv(per_problem_path, index=False)
- 
+
     print("\n=== Eval Summary ===")
     for k, v in metrics.items():
         print(f"  {k}: {v}")
     print(f"\n[score] metrics  -> {metrics_path}")
     print(f"[score] per-prob -> {per_problem_path}")
- 
+
     return metrics
- 
- 
+
+
 # ----------------------------- Modal entrypoint -----------------------------
- 
+
 @app.function(
     image=image,
     gpu="A100-80GB",
@@ -437,28 +433,28 @@ def run_eval(
     use_lm_eval: bool,
 ):
     import os
- 
+
     os.environ["HF_HOME"] = "/data/hf_cache"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
- 
+
     if dataset not in DATASETS:
         raise ValueError(f"Unknown --dataset={dataset!r}; choose from {list(DATASETS)}")
     if model not in MODEL_IDS:
         raise ValueError(f"Unknown --model={model!r}; choose from {list(MODEL_IDS)}")
- 
+
     dataset_models = MODEL_IDS[model]
     if dataset not in dataset_models:
         raise ValueError(f"Model {model!r} is not supported or defined for dataset {dataset!r}")
- 
+
     model_id = dataset_models[dataset]
     tag = output_tag or f"n{n_samples}_l{max_response_length}"
- 
+
     if use_lm_eval:
         import lm_eval
- 
+
         if dataset != "gsm8k":
             raise ValueError("--use-lm-eval currently only supports gsm8k")
- 
+
         print(f"[lm-eval] Running official gsm8k evaluation for {model_id}")
         results = lm_eval.simple_evaluate(
             model="vllm",
@@ -467,13 +463,13 @@ def run_eval(
             batch_size="auto",
             device="cuda:0",
         )
- 
+
         import json
         print("\n=== Raw lm-eval results['results'] ===")
         print(json.dumps(results["results"], indent=2))
- 
+
         gsm8k_results = results["results"].get("gsm8k", {})
- 
+
         accuracy_key = None
         for candidate in [
             "exact_match,flexible-extract",
@@ -484,17 +480,17 @@ def run_eval(
             if candidate in gsm8k_results:
                 accuracy_key = candidate
                 break
- 
+
         if accuracy_key is None:
             for k in gsm8k_results.keys():
                 if "exact_match" in k or "acc" in k:
                     accuracy_key = k
                     break
- 
+
         accuracy_val = (
             float(gsm8k_results[accuracy_key]) if accuracy_key and accuracy_key in gsm8k_results else 0.0
         )
- 
+
         metrics = {
             "dataset": dataset,
             "model": model,
@@ -507,10 +503,10 @@ def run_eval(
         print("\n=== lm-eval Summary ===")
         for k, v in metrics.items():
             print(f"  {k}: {v}")
- 
+
         vol.commit()
         return metrics
- 
+
     # 1. Prepare parquet
     data_path, n_problems = _prepare_dataset(
         dataset_key=dataset,
@@ -519,7 +515,7 @@ def run_eval(
         num_problems=num_problems,
         tag=tag,
     )
- 
+
     # 2. Run generation
     output_path = os.path.join(
         DATA_DIR, f"{dataset}_{model}_{tag}_outputs.parquet"
@@ -534,7 +530,7 @@ def run_eval(
         max_prompt_length=max_prompt_length,
         max_response_length=max_response_length,
     )
- 
+
     # 3. Score
     metrics = _score_outputs(
         dataset_key=dataset,
@@ -543,11 +539,11 @@ def run_eval(
         model_tag=model,
         tag=tag,
     )
- 
+
     vol.commit()
     return metrics
- 
- 
+
+
 @app.local_entrypoint()
 def main(
     dataset: str = "aime",
@@ -564,21 +560,21 @@ def main(
     if dataset not in DATASETS:
         raise ValueError(f"Unknown --dataset={dataset!r}; choose from {list(DATASETS)}")
     cfg = DATASETS[dataset]
- 
+
     n_samples_v = cfg["default_n_samples"] if n_samples < 0 else n_samples
     max_response_length_v = (
         cfg["default_response_length"] if max_response_length < 0 else max_response_length
     )
     split_v = split or cfg["default_split"]
     num_problems_v = None if num_problems is None or num_problems < 0 else int(num_problems)
- 
+
     mode = "lm-eval" if use_lm_eval else "custom"
     print(
         f"[main] dataset={dataset} model={model} n_samples={n_samples_v} "
         f"max_response_length={max_response_length_v} subset={subset} split={split_v} "
         f"num_problems={num_problems_v} scorer={cfg['scorer']} mode={mode}"
     )
- 
+
     metrics = run_eval.remote(
         dataset=dataset,
         model=model,
