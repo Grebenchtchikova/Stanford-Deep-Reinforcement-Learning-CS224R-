@@ -24,7 +24,7 @@ app = modal.App("cs224r-trivia-train-gsm8k")
 image = (
     modal.Image.from_dockerfile("docker/Dockerfile.ngc.vllm0.8.noverl")
     .add_local_dir("../cs224r-project-e3", "/root/verl", copy=True)
-    .run_commands("pip install -e /root/verl")
+    .run_commands("pip install -e /root/verl", "pip install seaborn")
     .add_local_file(
         "reward/gsm8k_custom.py",
         "/root/verl/verl/utils/reward_score/gsm8k_custom.py",
