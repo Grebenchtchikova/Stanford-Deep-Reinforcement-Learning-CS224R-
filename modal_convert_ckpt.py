@@ -19,9 +19,7 @@ app = modal.App("cs224r-trivia-convert")
  
 image = (
     modal.Image.from_dockerfile("docker/Dockerfile.ngc.vllm0.8.noverl")
-    .run_commands(
-        "pip install git+https://github.com/volcengine/verl.git@554a6be",
-        "pip install fire",
+    .pip_install("verl==0.2.0.post2", "fire"),
     )
     .add_local_file("convert_fsdp_to_hf.py", "/root/convert_fsdp_to_hf.py")
 )
