@@ -17,7 +17,8 @@ app = modal.App("cs224r-data-upload-hendrycks")
 
 image = (
     modal.Image.from_dockerfile("docker/Dockerfile.ngc.vllm0.8.noverl")
-    .run_commands("pip install --no-deps verl==0.2.0.post2")
+    .add_local_dir("../cs224r-project-e3", "/root/verl", copy=True)
+    .run_commands("pip install -e /root/verl")
     .add_local_file("data_augmentation/hendrycks_padded.py", "/root/hendrycks_padded.py")
 )
 
