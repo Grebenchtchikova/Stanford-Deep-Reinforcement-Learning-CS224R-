@@ -51,7 +51,7 @@ TRACK_CONFIG = {
     gpu="H100",
     volumes={"/data": vol},
     secrets=[modal.Secret.from_name("wandb-secret")],
-    timeout=24 * 3600,
+    timeout=48 * 3600,
 )
 def run_train(track: str, total_steps: int, save_freq: int, test_freq: int):
     import os
