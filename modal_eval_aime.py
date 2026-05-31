@@ -233,7 +233,7 @@ def _score_outputs(output_path, n_samples, model_tag):
     gpu="A100-80GB",
     volumes={"/data": vol},
     secrets=[modal.Secret.from_name("wandb-secret")],
-    timeout=4 * 3600,
+    timeout=24 * 3600,
 )
 def run_eval(model: str, n_samples: int, num_problems, max_response_length: int):
     import os
@@ -303,9 +303,9 @@ def run_eval(model: str, n_samples: int, num_problems, max_response_length: int)
 @app.local_entrypoint()
 def main(
     model: str = "track-a-gsm8k",
-    n_samples: int = 16,
+    n_samples: int = 8,
     num_problems: int = -1,
-    max_response_length: int = 32768,
+    max_response_length: int = 8192,
 ):
     if model not in MODEL_CONFIG:
         raise ValueError(f"Unknown --model={model!r}; choose from {list(MODEL_CONFIG)}")
