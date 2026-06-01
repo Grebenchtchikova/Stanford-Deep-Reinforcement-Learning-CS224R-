@@ -34,6 +34,8 @@ TRACK_CONFIG = {
         "ckpt_root": "/data/ckpts/gsm8k",
         "a": "gsm8k-clean",
         "b": "gsm8k-trivia-only",
+        "c": "gsm8k-partial-e3-clean",
+        "d": "gsm8k-partial-e3-trivia",
     },
     "math": {
         "ckpt_root": "/data/ckpts/math",
@@ -90,8 +92,9 @@ def run_convert(track: str, dataset: str, step: int):
         raise ValueError(f"Unknown --dataset={dataset!r}; choose from {list(TRACK_CONFIG)}")
 
     cfg = TRACK_CONFIG[dataset]
-    if track not in ("a", "b"):
-        raise ValueError(f"Unknown --track={track!r}; choose 'a' or 'b'")
+    valid_tracks = [k for k in cfg if k != "ckpt_root"]
+    if track not in valid_tracks:
+        raise ValueError(f"Unknown --track={track!r}; choose from {valid_tracks}")
 
     os.environ["HF_HOME"] = "/data/hf_cache"
 
