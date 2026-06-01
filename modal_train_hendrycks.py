@@ -64,6 +64,7 @@ def run_train(track: str, total_steps: int, save_freq: int, test_freq: int):
 
     os.environ["HF_HOME"] = "/data/hf_cache"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"  # OOM fix
 
     train_parquet = os.path.join(DATA_DIR, config["parquet"])
     val_parquet = os.path.join(DATA_DIR, "test.parquet")
@@ -100,6 +101,7 @@ def run_train(track: str, total_steps: int, save_freq: int, test_freq: int):
     print(f"[modal_train] train_parquet={train_parquet}")
     print(f"[modal_train] val_parquet={val_parquet}")
     print(f"[modal_train] ckpt_dir={ckpt_dir}")
+    print(f"[modal_train] PYTORCH_CUDA_ALLOC_CONF={os.environ['PYTORCH_CUDA_ALLOC_CONF']}")
 
     try:
         subprocess.run(cmd, check=True, env=env, cwd="/root/verl")
