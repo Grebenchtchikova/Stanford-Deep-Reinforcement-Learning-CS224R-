@@ -93,6 +93,7 @@ def run_train(track: str, total_steps: int, test_freq: int):
 
     os.environ["HF_HOME"] = "/data/hf_cache"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
     train_parquet = os.path.join(DATA_DIR, config["parquet"])
     val_parquet = os.path.join(DATA_DIR, "test.parquet")
