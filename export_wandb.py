@@ -1,19 +1,13 @@
 """
-W&B → results.json export script
-Selects the longest run per experiment name, exports training curves + AIME evals.
+W&B -> results.json export (v3)
+Pulls ALL history rows, filters client-side. No key-name guessing.
 
 Usage:
-    pip install wandb
     python export_wandb.py
-
-Output: results.json
 """
-
 import wandb
 import json
-from collections import defaultdict
 
-# ---- CONFIG ----
 ENTITY = "greben-stanford-university"
 
 TRAINING_PROJECTS = {
@@ -31,174 +25,111 @@ TRAINING_PROJECTS = {
 
 AIME_PROJECT = "cs224r-trivia-aime"
 
-# Metrics to pull from training runs (all logged per step unless noted)
-TRAINING_METRICS = [
-    "global_step",
-    # Validation (sparse — logged at test_freq intervals)
-    "val/openai/gsm8k/test_score/",
-    "val/openai/gsm8k/test_score/unknown",
-    "val/openai/gsm8k/reward/mean",
-    "val/openai/gsm8k/length/mean",
-    "val/openai/gsm8k/length/unknown",
-    "val/DigitalLearningGmbH/MATH-lighteval/test_score/",
-    "val/DigitalLearningGmbH/MATH-lighteval/test_score/unknown",
-    "val/DigitalLearningGmbH/MATH-lighteval/reward/mean",
-    "val/DigitalLearningGmbH/MATH-lighteval/length/mean",
-    "val/DigitalLearningGmbH/MATH-lighteval/length/unknown",
-    # Training (dense — logged every step)
-    "actor/entropy",
-    "response_length/mean",
-    "response_length/min",
-    "response_length/clip_ratio",
-    "timing_s/training",
-    "timing_s/testing",
-]
-
-# AIME metrics
-AIME_METRICS = [
-    "pass_at_1",
-    "pass_at_1_mean",
-    "pass_at_4",
-    "pass_at_8",
-    "n_samples",
-    "num_problems",
+# We keep any key containing these substrings
+KEEP = [
+    "actor/entropy", "actor/kl_loss", "actor/ppo_kl",
+    "actor/pg_clipfrac",
+    "response_length/clip_ratio", "response_length/mean",
+    "response_length/min", "response_length/max",
+    "timing_s/testing", "timing_s/training", "timing_s/step",
+    "timing_s/gen",
+    "critic/score/mean", "critic/rewards/mean",
+    "test_score", "reward/mean", "length/mean", "length/unknown",
+    "perf/max_memory_allocated_gb",
+    "_step",
 ]
 
 
-def get_longest_run(api, project, experiment_name):
-    """Find the run with the most logged steps for a given experiment name."""
-    runs = api.runs(
+def should_keep(key):
+    for k in KEEP:
+        if k in key:
+            return True
+    return False
+
+
+def get_longest_run(api, project, exp_name):
+    runs = list(api.runs(
         f"{ENTITY}/{project}",
-        filters={"config.trainer.experiment_name": experiment_name},
-    )
+        filters={"config.trainer.experiment_name": exp_name},
+    ))
     if not runs:
-        # Try display name fallback
-        runs = api.runs(
-            f"{ENTITY}/{project}",
-            filters={"display_name": experiment_name},
-        )
+        all_runs = list(api.runs(f"{ENTITY}/{project}"))
+        runs = [r for r in all_runs if r.name == exp_name]
     if not runs:
-        print(f"  WARNING: No runs found for {experiment_name} in {project}")
+        print(f"  WARNING: no runs for {exp_name}")
         return None
-
-    # Pick the run with the most history rows
-    best_run = None
-    best_steps = -1
-    for run in runs:
-        last_step = run.summary.get("_step", 0)
-        if last_step > best_steps:
-            best_steps = last_step
-            best_run = run
-    
-    if best_run:
-        print(f"  Selected: {best_run.name} (id={best_run.id}, {best_steps} steps)")
-    return best_run
+    best = max(runs, key=lambda r: r.summary.get("_step", 0))
+    print(f"  {exp_name}: {best.name} id={best.id} steps={best.summary.get('_step',0)}")
+    return best
 
 
-def export_training_run(run):
-    """Export all training metrics from a run."""
-    history = run.scan_history(keys=TRAINING_METRICS, page_size=1000)
-    
-    data = defaultdict(list)
-    for row in history:
-        for key in TRAINING_METRICS:
-            if key in row and row[key] is not None:
-                # Use global_step as x-axis; fall back to _step
-                step = row.get("global_step", row.get("_step", 0))
-                data[key].append({"step": step, "value": row[key]})
-    
-    return dict(data)
+def export_run(run):
+    """Pull all history, filter client-side."""
+    rows_out = []
+    for row in run.scan_history(page_size=500):
+        filtered = {}
+        for k, v in row.items():
+            if v is not None and should_keep(k):
+                filtered[k] = v
+        if filtered:
+            filtered["_step"] = row.get("_step", len(rows_out))
+            rows_out.append(filtered)
+    print(f"    {len(rows_out)} rows, {sum(len(r) for r in rows_out)} values")
+    return rows_out
 
 
-def export_aime_runs(api):
-    """Export all AIME evaluation runs."""
-    runs = api.runs(f"{ENTITY}/{AIME_PROJECT}")
-    aime_data = {}
-    
-    for run in runs:
-        name = run.name or run.display_name or run.id
-        print(f"  AIME run: {name} (id={run.id})")
-        
+def export_aime(api):
+    runs = list(api.runs(f"{ENTITY}/{AIME_PROJECT}"))
+    # Dedup: latest per name
+    best = {}
+    for r in runs:
+        name = r.name or r.id
+        if name not in best or r.created_at > best[name].created_at:
+            best[name] = r
+
+    out = {}
+    for name, run in best.items():
         summary = {}
-        for key in AIME_METRICS:
-            val = run.summary.get(key)
-            if val is not None:
-                summary[key] = val
-        
-        # Also grab per-problem scores if logged as a table
-        per_problem = {}
-        try:
-            for key, val in run.summary.items():
-                if "problem" in key.lower() or "score" in key.lower():
-                    per_problem[key] = val
-        except Exception:
-            pass
-        
-        if per_problem:
-            summary["per_problem_raw"] = per_problem
-        
-        # Try to get config to identify which model this evaluated
-        model_config = run.config.get("model", name)
-        summary["model_config"] = model_config
-        summary["run_name"] = name
-        
-        aime_data[name] = summary
-    
-    return aime_data
+        for k, v in run.summary.items():
+            if not k.startswith("_"):
+                try:
+                    json.dumps(v)
+                    summary[k] = v
+                except (TypeError, ValueError):
+                    summary[k] = str(v)
+        summary["run_id"] = run.id
+        out[name] = summary
+        print(f"  {name}: pass@1={summary.get('pass@1','?')} pass@8={summary.get('pass@8','?')}")
+    return out
 
 
 def main():
     api = wandb.Api()
-    results = {
-        "training_curves": {},
-        "aime": {},
-        "metadata": {
-            "entity": ENTITY,
-            "export_note": "Longest run per experiment name auto-selected",
-        },
-    }
-    
-    # ---- Training runs ----
-    for project, experiment_names in TRAINING_PROJECTS.items():
-        print(f"\nProject: {project}")
-        for exp_name in experiment_names:
-            print(f"  Experiment: {exp_name}")
+    results = {"training": {}, "aime": {}}
+
+    for project, names in TRAINING_PROJECTS.items():
+        print(f"\n{project}")
+        for exp_name in names:
             run = get_longest_run(api, project, exp_name)
-            if run is None:
+            if not run:
                 continue
-            
-            data = export_training_run(run)
-            
-            # Store with a clean key name
+            data = export_run(run)
             key = exp_name.replace("-", "_")
-            results["training_curves"][key] = {
+            results["training"][key] = {
                 "run_id": run.id,
-                "run_name": run.name,
-                "project": project,
                 "experiment_name": exp_name,
-                "total_steps": run.summary.get("_step", 0),
-                "metrics": data,
+                "rows": data,
             }
-    
-    # ---- AIME evals ----
-    print(f"\nProject: {AIME_PROJECT}")
-    results["aime"] = export_aime_runs(api)
-    
-    # ---- Save ----
-    output_path = "results.json"
-    with open(output_path, "w") as f:
+
+    print(f"\n{AIME_PROJECT}")
+    results["aime"] = export_aime(api)
+
+    with open("results.json", "w") as f:
         json.dump(results, f, indent=2, default=str)
-    
-    # Print summary
-    print(f"\n{'='*50}")
-    print(f"Exported to {output_path}")
-    print(f"Training runs: {len(results['training_curves'])}")
-    for key, val in results["training_curves"].items():
-        n_metrics = sum(len(v) for v in val["metrics"].values())
-        print(f"  {key}: {n_metrics} data points across {len(val['metrics'])} metrics")
-    print(f"AIME evals: {len(results['aime'])}")
-    for key, val in results["aime"].items():
-        print(f"  {key}: {list(val.keys())}")
+
+    print(f"\nDone. Training: {len(results['training'])} runs, AIME: {len(results['aime'])} evals")
+    for k, v in results["training"].items():
+        print(f"  {k}: {len(v['rows'])} rows")
 
 
 if __name__ == "__main__":
