@@ -52,6 +52,14 @@ MODEL_CONFIG = {
         "path": "/data/ckpts/math/math-trivia-only_hf",
         "wandb_name": "Track B MATH",
     },
+    "track-c-gsm8k": {
+        "path": "/data/ckpts/gsm8k/gsm8k-partial-e3-clean_hf",
+        "wandb_name": "Track C GSM8K (partial e3 clean)",
+    },
+    "track-d-gsm8k": {
+        "path": "/data/ckpts/gsm8k/gsm8k-partial-e3-trivia_hf",
+        "wandb_name": "Track D GSM8K (partial e3 trivia)",
+    },
 }
 
 # AIME dataset configuration
