@@ -26,8 +26,13 @@ TRAINING_PROJECTS = {
 }
 
 # Experiments that need merging across multiple runs
-# For these, we pull ALL matching runs and stitch by step
-MERGE_EXPERIMENTS = {"math-clean"}
+# Map experiment name -> list of (project, run_id) in priority order (oldest first)
+MERGE_RUNS = {
+    "math-clean": [
+        ("cs224r-trivia-hendrycks", "uojla9ie"),   # original: steps 0-398
+        ("cs224r-trivia-hendrycks", "hkvxuwgl"),   # resumed: steps 300-400
+    ],
+}
 
 AIME_PROJECT = "cs224r-trivia-aime"
 
@@ -90,47 +95,42 @@ def export_run(run):
     return rows_out
 
 
-def export_merged(api, project, exp_name):
-    """Pull all runs for an experiment name and merge by step.
+def export_merged(api, exp_name):
+    """Pull specific runs by ID and merge by step.
     
     Strategy:
-    - Sort runs by creation time (oldest first)
-    - For each step, take the FIRST (original) run's data
-    - Only use later runs to fill in steps not covered by earlier runs
-    This ensures continuous original training takes priority.
+    - Runs are listed in priority order (oldest first)
+    - For each step, take the FIRST run's data
+    - Later runs only fill in steps/keys not covered by earlier runs
     """
-    runs = get_all_runs(api, project, exp_name)
-    if not runs:
-        print(f"  WARNING: no runs for {exp_name}")
-        return [], []
-
-    # Sort oldest first — original run takes priority
-    runs.sort(key=lambda r: r.created_at)
-
+    run_specs = MERGE_RUNS[exp_name]
+    
+    runs = []
+    for project, run_id in run_specs:
+        run = api.run(f"{ENTITY}/{project}/{run_id}")
+        runs.append(run)
+    
     print(f"  {exp_name}: merging {len(runs)} runs:")
     run_ids = []
     for r in runs:
         steps = r.summary.get("_step", 0)
-        print(f"    {r.name} id={r.id} steps={steps} created={r.created_at}")
+        print(f"    {r.name} id={r.id} steps={steps}")
         run_ids.append(r.id)
 
-    # Pull all rows from all runs
-    all_rows_by_step = {}  # step -> row (first writer wins)
+    # Pull all rows from all runs — first run takes priority
+    all_rows_by_step = {}
     for run in runs:
         run_rows = export_run(run)
         for row in run_rows:
             step = row["_step"]
             if step not in all_rows_by_step:
-                # First run to provide this step wins
                 all_rows_by_step[step] = row
             else:
-                # Merge: fill in keys the existing row doesn't have
                 existing = all_rows_by_step[step]
                 for k, v in row.items():
                     if k not in existing:
                         existing[k] = v
 
-    # Sort by step
     merged = [all_rows_by_step[s] for s in sorted(all_rows_by_step.keys())]
     print(f"    Merged: {len(merged)} unique steps, {sum(len(r) for r in merged)} values")
     return merged, run_ids
@@ -170,8 +170,8 @@ def main():
         for exp_name in names:
             key = exp_name.replace("-", "_")
 
-            if exp_name in MERGE_EXPERIMENTS:
-                rows, run_ids = export_merged(api, project, exp_name)
+            if exp_name in MERGE_RUNS:
+                rows, run_ids = export_merged(api, exp_name)
                 results["training"][key] = {
                     "run_ids": run_ids,
                     "experiment_name": exp_name,
