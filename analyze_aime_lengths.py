@@ -5,23 +5,19 @@ import os
 files = sorted(glob.glob("*_outputs.parquet"))
 if not files:
     print("No *_outputs.parquet files found in current directory.")
-    print(f"Current directory: {os.getcwd()}")
-    print("Make sure you ran: modal volume get cs224r-trivia-vol eval/aime/<filename> .")
-else:
-    for f in files:
-        df = pd.read_parquet(f)
-        print(f"\n{f}")
-        print(f"  Rows: {len(df)}")
-        print(f"  Columns: {list(df.columns)}")
-        # Try common column names for the response text
-        for col in ["response", "output", "completion", "generated_text"]:
-            if col in df.columns:
-                lengths = df[col].str.len()
-                print(f"  Column '{col}': mean={lengths.mean():.0f} chars, median={lengths.median():.0f}")
-                break
-        else:
-            # Just show all string columns and their lengths
-            for col in df.columns:
-                if df[col].dtype == object:
-                    lengths = df[col].str.len()
-                    print(f"  Column '{col}': mean={lengths.mean():.0f} chars, median={lengths.median():.0f}")
+    exit()
+
+for f in files:
+    df = pd.read_parquet(f)
+    name = f.split("_outputs")[0].replace("aime_", "")
+    
+    # responses is a list of 8 strings per row — explode it
+    responses = df["responses"].explode()
+    lengths = responses.str.len()
+    
+    print(f"{name}")
+    print(f"  Problems: {len(df)}, Total responses: {len(responses)}")
+    print(f"  Mean response length: {lengths.mean():.0f} chars")
+    print(f"  Median: {lengths.median():.0f} chars")
+    print(f"  Min: {lengths.min():.0f}, Max: {lengths.max():.0f}")
+    print()
