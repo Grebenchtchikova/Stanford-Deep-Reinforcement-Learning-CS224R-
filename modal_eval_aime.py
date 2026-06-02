@@ -60,6 +60,10 @@ MODEL_CONFIG = {
         "path": "/data/ckpts/gsm8k/gsm8k-partial-e3-trivia_hf",
         "wandb_name": "Track D GSM8K (partial e3 trivia)",
     },
+    "track-e-gsm8k": {
+        "path": "/data/ckpts/gsm8k/gsm8k-track-e-2M-partial-e3_hf",
+        "wandb_name": "Track E GSM8K (2M mixed partial e3)",
+    },
 }
 
 # AIME dataset configuration
