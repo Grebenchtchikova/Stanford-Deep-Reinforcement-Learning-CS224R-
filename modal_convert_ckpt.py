@@ -36,6 +36,7 @@ TRACK_CONFIG = {
         "b": "gsm8k-trivia-only",
         "c": "gsm8k-partial-e3-clean",
         "d": "gsm8k-partial-e3-trivia",
+        "e": "gsm8k-track-e-2M-partial-e3",
     },
     "math": {
         "ckpt_root": "/data/ckpts/math",
