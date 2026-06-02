@@ -16,6 +16,7 @@ TRAINING_PROJECTS = {
         "gsm8k-trivia-only",
         "gsm8k-partial-e3-clean",
         "gsm8k-partial-e3-trivia",
+        "gsm8k-track-e-2M-partial-e3",
     ],
     "cs224r-trivia-hendrycks": [
         "math-clean",
