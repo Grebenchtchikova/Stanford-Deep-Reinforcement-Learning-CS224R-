@@ -41,6 +41,7 @@ KEEP = [
     "critic/score/mean", "critic/rewards/mean",
     "test_score", "reward/mean", "length/mean", "length/unknown",
     "perf/max_memory_allocated_gb",
+    "steps/compute_matched_steps",
     "_step",
 ]
 
@@ -148,7 +149,7 @@ def export_aime(api):
     for name, run in best.items():
         summary = {}
         for k, v in run.summary.items():
-            if not k.startswith("_"):
+            if not k.startswith("_") or k == "_runtime":
                 try:
                     json.dumps(v)
                     summary[k] = v
