@@ -13,6 +13,11 @@ Usage:
     # GSM8K with trained Track B checkpoint
     modal run modal_eval_general.py --dataset gsm8k --model track_b
 
+    # GSM8K with Track C / D / E checkpoints (partial e3 clean / trivia / 2M mixed)
+    modal run modal_eval_general.py --dataset gsm8k --model track_c
+    modal run modal_eval_general.py --dataset gsm8k --model track_d
+    modal run modal_eval_general.py --dataset gsm8k --model track_e
+
     # GSM8K with e3 published checkpoint
     modal run modal_eval_general.py --dataset gsm8k --model e3
 
@@ -62,6 +67,15 @@ MODEL_IDS = {
     "track_b": {
         "gsm8k": "/data/ckpts/gsm8k/gsm8k-trivia-only_hf",
         "math": "/data/ckpts/math/math-trivia-only_hf",
+    },
+    "track_c": {
+        "gsm8k": "/data/ckpts/gsm8k/gsm8k-partial-e3-clean_hf",
+    },
+    "track_d": {
+        "gsm8k": "/data/ckpts/gsm8k/gsm8k-partial-e3-trivia_hf",
+    },
+    "track_e": {
+        "gsm8k": "/data/ckpts/gsm8k/gsm8k-track-e-2M-partial-e3_hf",
     },
 }
 
